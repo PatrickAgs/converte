@@ -1,0 +1,1029 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Converte</title>
+<meta name="description" content="Converta, comprima e limpe metadados de imagens, PDF e Word direto no celular. Nada é enviado para a internet.">
+<meta name="theme-color" content="#2f6fe8">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body { margin: 0; -webkit-text-size-adjust: 100%; }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: uma coluna de app de celular; escolher arquivo → botões explicados → salvar. */
+:root {
+  --bg: #f4f6fa;
+  --surface: #ffffff;
+  --surface-2: #eef2f8;
+  --line: #dde3ee;
+  --fg: #141a26;
+  --muted: #5d6779;
+  --accent: #2f6fe8;
+  --accent-ink: #ffffff;
+  --accent-soft: #e4edff;
+  --ok: #18794e;
+  --ok-soft: #e3f4ea;
+  --bad: #c2362f;
+  --bad-soft: #fbe9e8;
+  --font-ui: "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f131b; --surface: #171c27; --surface-2: #1d2433; --line: #2a3243;
+    --fg: #eef2f8; --muted: #9aa5b8; --accent: #5b8ff5; --accent-ink: #0b1220;
+    --accent-soft: #1c2a47; --ok: #5fd39b; --ok-soft: #14301f; --bad: #ff8a80; --bad-soft: #3a1a1a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f131b; --surface: #171c27; --surface-2: #1d2433; --line: #2a3243;
+  --fg: #eef2f8; --muted: #9aa5b8; --accent: #5b8ff5; --accent-ink: #0b1220;
+  --accent-soft: #1c2a47; --ok: #5fd39b; --ok-soft: #14301f; --bad: #ff8a80; --bad-soft: #3a1a1a;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-ui); font-size: 15px; line-height: 1.45;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 18px 40px;
+}
+.app { max-width: 560px; margin: 0 auto; display: grid; gap: 18px; }
+h1, h2, h3 { margin: 0; text-wrap: balance; }
+p { margin: 0; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* topo */
+.top { display: flex; align-items: center; gap: 12px; }
+.top svg { width: 44px; height: 44px; flex: none; }
+.top h1 { font-size: 1.55rem; font-weight: 800; letter-spacing: -0.02em; }
+.top p { color: var(--muted); font-size: .88rem; }
+
+/* escolher arquivos */
+.pick {
+  display: grid; place-items: center; text-align: center; gap: 6px;
+  padding: 26px 16px; border-radius: var(--radius); cursor: pointer;
+  background: var(--surface); border: 2px dashed var(--line);
+  transition: border-color .15s, background .15s;
+}
+.pick:hover, .pick.drag { border-color: var(--accent); background: var(--accent-soft); }
+.pick .big { font-weight: 700; font-size: 1.08rem; }
+.pick .small { color: var(--muted); font-size: .85rem; }
+.pick .btn { margin-top: 8px; }
+.pick-wrap { position: relative; border-radius: var(--radius); }
+/* o seletor de verdade fica por cima da área inteira, invisível: o toque cai direto nele */
+#file { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-size: 0; z-index: 2; }
+
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 999px;
+  padding: 11px 20px; font-weight: 700; cursor: pointer; min-height: 44px;
+}
+.btn.ghost { background: transparent; color: var(--accent); padding-inline: 8px; }
+.btn:disabled { opacity: .5; cursor: default; }
+
+/* arquivos escolhidos */
+.chosen { display: grid; gap: 8px; }
+.chosen-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.label { font-size: .74rem; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
+.files { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  display: inline-flex; align-items: baseline; gap: 6px; max-width: 100%;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 999px;
+  padding: 5px 12px; font-size: .86rem; min-width: 0;
+}
+.chip span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.size { font-family: var(--font-mono); font-size: .76rem; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* ações */
+.group { display: grid; gap: 8px; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+@media (max-width: 380px) { .grid { grid-template-columns: 1fr; } }
+.act {
+  display: grid; gap: 2px; text-align: left; cursor: pointer; min-width: 0;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+  padding: 11px 13px; transition: border-color .12s, background .12s;
+}
+.act:hover { border-color: var(--accent); }
+.act:active { background: var(--accent-soft); }
+.act:disabled { opacity: .5; cursor: default; }
+.act b { font-size: .95rem; }
+.act small { color: var(--muted); font-size: .8rem; line-height: 1.35; }
+.act.main { border-color: var(--accent); background: var(--accent-soft); }
+
+/* resultado */
+.result { border-radius: var(--radius); padding: 14px 16px; display: grid; gap: 10px; border: 1px solid var(--line); background: var(--surface); }
+.result.ok { background: var(--ok-soft); border-color: transparent; }
+.result.bad { background: var(--bad-soft); border-color: transparent; }
+.result .msg { font-weight: 600; overflow-wrap: anywhere; }
+.result.ok .msg::before { content: "✓ "; color: var(--ok); }
+.result.bad .msg { color: var(--bad); }
+.result .detail { color: var(--muted); font-size: .86rem; overflow-wrap: anywhere; }
+.result .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.spinner { width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid var(--line); border-top-color: var(--accent); animation: spin .8s linear infinite; flex: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 3s; } }
+
+/* catálogo */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; display: grid; gap: 8px; }
+.card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.card h3 { font-size: 1.02rem; }
+.card .exts { font-family: var(--font-mono); font-size: .74rem; color: var(--muted); }
+.card ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.card li { font-size: .9rem; color: var(--fg); }
+.card li b { font-weight: 700; }
+.help { background: var(--accent-soft); border-radius: var(--radius); padding: 14px 16px; display: grid; gap: 6px; font-size: .88rem; }
+.help h3 { font-size: .98rem; }
+.note { color: var(--muted); font-size: .8rem; text-align: center; }
+</style>
+
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <svg viewBox="0 0 64 64" aria-hidden="true">
+      <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3b82f6"/><stop offset="1" stop-color="#2563eb"/></linearGradient></defs>
+      <rect x="2.5" y="2.5" width="59" height="59" rx="14" fill="url(#g)"/>
+      <path d="M17 11.5h21l9 9v32H17z" fill="#fff"/>
+      <path d="M38 11.5v9h9z" fill="#bfd4fc"/>
+      <path d="M24.6 31.2a8.2 8.2 0 0 1 13.4-3.4" fill="none" stroke="#3b82f6" stroke-width="3" stroke-linecap="round"/>
+      <path d="M39.6 23.6l-.2 5.6-5.4-1.1z" fill="#3b82f6"/>
+      <path d="M39.4 36.8a8.2 8.2 0 0 1-13.4 3.4" fill="none" stroke="#3b82f6" stroke-width="3" stroke-linecap="round"/>
+      <path d="M24.4 44.4l.2-5.6 5.4 1.1z" fill="#3b82f6"/>
+    </svg>
+    <div>
+      <h1>Converte</h1>
+      <p>Converta, comprima e limpe arquivos. Tudo no seu aparelho.</p>
+    </div>
+  </header>
+
+  <div class="pick-wrap">
+    <div class="pick" id="pick">
+      <span class="big" id="pickBig">Escolha fotos ou arquivos</span>
+      <span class="small" id="pickSmall">Imagens, PDF, Word (.docx) e texto. Pode escolher vários.</span>
+      <span class="btn" id="pickBtn">Escolher arquivos</span>
+    </div>
+    <input type="file" id="file" multiple aria-label="Escolher arquivos">
+  </div>
+
+  <section class="chosen" id="chosen" hidden>
+    <div class="chosen-head">
+      <span class="label" id="chosenLabel">Escolhidos</span>
+      <button class="btn ghost" id="clear" type="button">Tirar da lista</button>
+    </div>
+    <div class="files" id="files"></div>
+  </section>
+
+  <section id="result" class="result" hidden aria-live="polite">
+    <div class="row"><span class="spinner" id="spin" hidden></span><span class="msg" id="msg"></span></div>
+    <p class="detail" id="detail" hidden></p>
+    <div class="row" id="saveRow" hidden>
+      <button class="btn" id="save" type="button">Salvar arquivo</button>
+      <button class="btn ghost" id="share" type="button" hidden>Compartilhar</button>
+      <span class="size" id="saveSize"></span>
+    </div>
+  </section>
+
+  <section id="actions" class="group" hidden></section>
+
+  <section id="catalog" class="group">
+    <span class="label">O que dá para fazer</span>
+    <article class="card">
+      <div class="card-head"><h3>Imagem</h3><span class="exts">PNG · JPG · WEBP · HEIC · GIF</span></div>
+      <ul>
+        <li><b>Converter</b> para PNG, JPG, WEBP, PDF ou Word. Várias fotos viram um PDF ou Word só.</li>
+        <li><b>Limpar metadados</b>: tira localização (GPS), modelo do celular, data e marcas de IA.</li>
+        <li><b>Comprimir</b>: arquivo bem menor, quase sem diferença visível. Bom para mandar no WhatsApp ou e-mail.</li>
+        <li><b>Reduzir, girar, preto e branco, recortar quadrado</b>: ajustes rápidos.</li>
+      </ul>
+    </article>
+    <article class="card">
+      <div class="card-head"><h3>PDF</h3><span class="exts">.pdf</span></div>
+      <ul>
+        <li><b>Para Word</b>: o texto do PDF num documento Word para editar.</li>
+        <li><b>Para imagem</b>: cada página vira PNG ou JPG. Com várias páginas, vem tudo num .zip.</li>
+        <li><b>Para texto</b>: só o texto, em .txt.</li>
+        <li><b>Juntar e separar</b>: junta vários PDFs num só, ou separa cada página.</li>
+        <li><b>Girar e limpar metadados</b>: páginas giradas; PDF sem autor, programa usado e marcas de IA.</li>
+      </ul>
+    </article>
+    <article class="card">
+      <div class="card-head"><h3>Word e texto</h3><span class="exts">.docx · .txt · .md · .csv</span></div>
+      <ul>
+        <li><b>Word para texto</b>: só o texto, em .txt.</li>
+        <li><b>Limpar metadados do Word</b>: tira autor, empresa, propriedades e marcas de IA, inclusive das fotos de dentro.</li>
+        <li><b>Texto para Word ou PDF</b>: transforma um .txt em documento.</li>
+      </ul>
+    </article>
+    <div class="help" id="metaHelp">
+      <h3>O que são metadados?</h3>
+      <p>São informações escondidas dentro do arquivo, que não aparecem na foto ou no texto. Podem revelar onde a foto foi tirada (GPS), o modelo do celular, a data, o nome do autor, o programa usado e, em imagens feitas por IA, o prompt e a marcação de "gerada por IA" (ChatGPT, Gemini, Midjourney, Firefly e outras).</p>
+      <p>"Limpar metadados" cria uma cópia sem essas informações. A foto ou o texto continuam iguais.</p>
+      <p>Não dá para remover marcas d'água invisíveis gravadas nos próprios pixels, como o SynthID do Google.</p>
+    </div>
+    <p class="note">Word para PDF e comprimir PDF existem só na versão para computador.</p>
+  </section>
+
+  <p class="note">Seus arquivos não saem do aparelho: nada é enviado para a internet.</p>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+<script>
+"use strict";
+/* ============================================================ utilidades */
+const $ = (id) => document.getElementById(id);
+const AI_WORDS = /(trainedAlgorithmicMedia|compositeSynthetic|algorithmicMedia|Midjourney|DALL.?E|OpenAI|ChatGPT|GPT-?[0-9]|Sora|Stable Diffusion|SDXL|Flux|Firefly|Imagen|Gemini|SynthID|Leonardo\.?ai|NovelAI|ComfyUI|Automatic1111|Fooocus|InvokeAI|Copilot|Bing Image|Ideogram|Grok|Kling|Runway|Krea|Recraft|Meta AI|Nano Banana)/i;
+const latin1 = (u8) => { let s = ""; for (let i = 0; i < u8.length; i += 8192) s += String.fromCharCode.apply(null, u8.subarray(i, i + 8192)); return s; };
+const fmtSize = (n) => n < 1024 ? n + " B" : n < 1048576 ? (n / 1024).toFixed(0) + " KB" : (n / 1048576).toFixed(1).replace(".", ",") + " MB";
+const baseName = (name) => name.replace(/\.[^.]+$/, "");
+const extOf = (name) => (name.match(/\.([^.]+)$/) || ["", ""])[1].toLowerCase();
+const addFound = (list, item) => { if (!list.includes(item)) list.push(item); };
+class UserError extends Error {}
+
+function kindOf(file) {
+  const e = extOf(file.name), t = file.type || "";
+  if (["png", "jpg", "jpeg", "webp", "gif", "bmp", "heic", "heif", "avif", "tif", "tiff"].includes(e) || t.startsWith("image/")) return "image";
+  if (e === "pdf" || t === "application/pdf") return "pdf";
+  if (e === "docx") return "docx";
+  if (["txt", "md", "csv", "log", "json"].includes(e) || t.startsWith("text/")) return "text";
+  return "other";
+}
+
+/* ============================================================ imagens */
+let heicLoaded = null;
+function loadHeicLib() {
+  if (!heicLoaded) heicLoaded = new Promise((ok, fail) => {
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js";
+    s.onload = () => ok(window.heic2any);
+    s.onerror = () => { heicLoaded = null; fail(new UserError("Não consegui carregar o leitor de HEIC. Verifique a internet.")); };
+    document.head.appendChild(s);
+  });
+  return heicLoaded;
+}
+const isHeic = (f) => /^(heic|heif)$/.test(extOf(f.name)) || /hei[cf]/.test(f.type);
+
+async function decodeImage(file) {
+  let blob = file;
+  if (isHeic(file)) {
+    try { return await createImageBitmap(file); } catch (e) { /* Safari lê HEIC sozinho; os outros precisam do conversor */ }
+    const heic2any = await loadHeicLib();
+    const out = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.95 });
+    blob = Array.isArray(out) ? out[0] : out;
+  }
+  try {
+    return await createImageBitmap(blob, { imageOrientation: "from-image" });
+  } catch (e) {
+    // alguns navegadores antigos: usa <img>
+    const url = URL.createObjectURL(blob);
+    try {
+      const img = new Image(); img.src = url; await img.decode(); return img;
+    } catch (e2) {
+      throw new UserError(`Não consegui abrir a imagem ${file.name}.`);
+    } finally { URL.revokeObjectURL(url); }
+  }
+}
+
+const MAX_PIXELS = 16_000_000; // limite seguro de canvas em celulares
+function drawToCanvas(src, opts = {}) {
+  let w = src.width, h = src.height;
+  let scale = opts.scale || 1;
+  if (w * h * scale * scale > MAX_PIXELS) scale = Math.sqrt(MAX_PIXELS / (w * h));
+  const sw = Math.max(1, Math.round(w * scale)), sh = Math.max(1, Math.round(h * scale));
+  const rot = (opts.rotate || 0) % 360;
+  const c = document.createElement("canvas");
+  c.width = rot % 180 ? sh : sw; c.height = rot % 180 ? sw : sh;
+  const ctx = c.getContext("2d");
+  if (opts.background) { ctx.fillStyle = opts.background; ctx.fillRect(0, 0, c.width, c.height); }
+  ctx.save();
+  if (rot) { ctx.translate(c.width / 2, c.height / 2); ctx.rotate(rot * Math.PI / 180); ctx.translate(-sw / 2, -sh / 2); }
+  if (opts.crop) { const k = opts.crop; ctx.drawImage(src, k.x, k.y, k.s, k.s, 0, 0, sw, sh); }
+  else ctx.drawImage(src, 0, 0, sw, sh);
+  ctx.restore();
+  return { canvas: c, downscaled: scale < (opts.scale || 1) };
+}
+function canvasBlob(canvas, type, quality) {
+  return new Promise((ok, fail) => canvas.toBlob((b) => {
+    if (!b) return fail(new UserError("O aparelho não conseguiu gerar a imagem (talvez seja grande demais)."));
+    if (b.type !== type) return fail(new UserError(type === "image/webp" ? "Este navegador não sabe salvar WEBP. Use PNG ou JPG." : "Formato não suportado neste navegador."));
+    ok(b);
+  }, type, quality));
+}
+function hasAlpha(canvas) {
+  // olha uma cópia pequena: rápido e sem gastar memória
+  const k = Math.min(1, 256 / Math.max(canvas.width, canvas.height));
+  const c = document.createElement("canvas");
+  c.width = Math.max(1, Math.round(canvas.width * k)); c.height = Math.max(1, Math.round(canvas.height * k));
+  const ctx = c.getContext("2d"); ctx.drawImage(canvas, 0, 0, c.width, c.height);
+  const d = ctx.getImageData(0, 0, c.width, c.height).data;
+  for (let i = 3; i < d.length; i += 4) if (d[i] < 250) return true;
+  return false;
+}
+const MIME = { png: "image/png", jpg: "image/jpeg", webp: "image/webp" };
+const sameFmt = (file) => ({ png: "png", jpg: "jpg", jpeg: "jpg", webp: "webp" })[extOf(file.name)] || "jpg";
+
+async function imageTo(file, fmt, opts = {}) {
+  const src = await decodeImage(file);
+  const { canvas, downscaled } = drawToCanvas(src, { ...opts, background: fmt === "jpg" ? "#ffffff" : null });
+  const q = opts.quality ?? (fmt === "png" ? undefined : 0.9);
+  const blob = await canvasBlob(canvas, MIME[fmt], q);
+  return { blob, downscaled };
+}
+
+/* ---------- limpeza sem perda (sem re-salvar a imagem) */
+function parseExif(u8, found) {
+  // u8 começa no cabeçalho TIFF ("II*\0" ou "MM\0*")
+  const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  if (u8.length < 8) return 1;
+  const le = u8[0] === 0x49;
+  const u16 = (o) => dv.getUint16(o, le), u32 = (o) => dv.getUint32(o, le);
+  let orientation = 1;
+  const readIfd = (off, depth) => {
+    if (off + 2 > u8.length || depth > 2) return;
+    const n = u16(off);
+    for (let i = 0; i < n; i++) {
+      const e = off + 2 + i * 12;
+      if (e + 12 > u8.length) return;
+      const tag = u16(e);
+      if (tag === 0x0112) orientation = u16(e + 8) || 1;
+      if (tag === 0x8825) {
+        const g = u32(e + 8);
+        if (g + 2 <= u8.length && u16(g) > 0) addFound(found, "localização (GPS)");
+      }
+      if (tag === 0x8769) readIfd(u32(e + 8), depth + 1);
+    }
+  };
+  try { readIfd(u32(4), 0); } catch (e) { /* EXIF quebrado: ignora */ }
+  return orientation;
+}
+
+function cleanJpeg(u8, found) {
+  if (u8[0] !== 0xFF || u8[1] !== 0xD8) return null;
+  const parts = [u8.subarray(0, 2)];
+  let i = 2, orientation = 1;
+  while (i + 4 <= u8.length) {
+    if (u8[i] !== 0xFF) return null;
+    const m = u8[i + 1];
+    if (m === 0xFF) { i += 1; continue; }                            // bytes de preenchimento
+    if (m === 0xDA) { parts.push(u8.subarray(i)); break; }           // início da imagem: copia o resto
+    if (m === 0xD8 || (m >= 0xD0 && m <= 0xD7) || m === 0x01) { parts.push(u8.subarray(i, i + 2)); i += 2; continue; }
+    const len = (u8[i + 2] << 8) | u8[i + 3];
+    const seg = u8.subarray(i, i + 2 + len), data = u8.subarray(i + 4, i + 2 + len);
+    const head = latin1(data.subarray(0, 40));
+    let keep = true;
+    if (m === 0xE1) {
+      keep = false;
+      if (head.startsWith("Exif\0")) { addFound(found, "EXIF (câmera, data)"); orientation = parseExif(data.subarray(6), found); }
+      else if (head.startsWith("http://ns.adobe.com/xap")) addFound(found, "XMP");
+      if (AI_WORDS.test(latin1(data))) addFound(found, "marcação de IA");
+    } else if (m === 0xED) { keep = false; addFound(found, "IPTC"); }
+    else if (m === 0xEB) { keep = false; addFound(found, "C2PA (Content Credentials)"); if (AI_WORDS.test(latin1(data))) addFound(found, "marcação de IA"); }
+    else if (m === 0xFE) { keep = false; addFound(found, "comentário"); if (AI_WORDS.test(latin1(data))) addFound(found, "marcação de IA"); }
+    else if (m === 0xE2) keep = head.startsWith("ICC_PROFILE");           // perfil de cor: mantém
+    else if (m >= 0xE3 && m <= 0xEF && m !== 0xEE) { keep = false; addFound(found, "outros dados"); }
+    if (keep) parts.push(seg);
+    i += 2 + len;
+  }
+  return { bytes: concat(parts), orientation };
+}
+
+const PNG_KEEP = new Set(["IHDR", "PLTE", "IDAT", "IEND", "tRNS", "gAMA", "cHRM", "sRGB", "iCCP", "sBIT", "pHYs", "bKGD", "acTL", "fcTL", "fdAT"]);
+function cleanPng(u8, found) {
+  const sig = [137, 80, 78, 71, 13, 10, 26, 10];
+  if (!sig.every((b, k) => u8[k] === b)) return null;
+  const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  const parts = [u8.subarray(0, 8)];
+  let i = 8;
+  while (i + 12 <= u8.length) {
+    const len = dv.getUint32(i), type = latin1(u8.subarray(i + 4, i + 8));
+    const end = i + 12 + len, data = u8.subarray(i + 8, i + 8 + len);
+    if (PNG_KEEP.has(type)) parts.push(u8.subarray(i, end));
+    else {
+      const text = latin1(data.subarray(0, 4096));
+      if (type === "tEXt" || type === "zTXt" || type === "iTXt") {
+        if (/^XML:com\.adobe\.xmp/.test(text)) addFound(found, "XMP");
+        else if (/^(parameters|prompt|workflow|negative_prompt|Dream|sd-metadata|invokeai|generation_data|Comment|Description)/i.test(text)) addFound(found, "prompt / dados do gerador de IA");
+        else addFound(found, "textos escondidos");
+      } else if (type === "eXIf") { addFound(found, "EXIF (câmera, data)"); parseExif(data, found); }
+      else if (type === "caBX") addFound(found, "C2PA (Content Credentials)");
+      else addFound(found, "outros dados");
+      if (AI_WORDS.test(latin1(data))) addFound(found, "marcação de IA");
+    }
+    if (type === "IEND") break;
+    i = end;
+  }
+  return { bytes: concat(parts), orientation: 1 };
+}
+
+function cleanWebp(u8, found) {
+  if (latin1(u8.subarray(0, 4)) !== "RIFF" || latin1(u8.subarray(8, 12)) !== "WEBP") return null;
+  const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  const keep = new Set(["VP8 ", "VP8L", "VP8X", "ALPH", "ANIM", "ANMF", "ICCP"]);
+  const chunks = [];
+  let i = 12;
+  while (i + 8 <= u8.length) {
+    const type = latin1(u8.subarray(i, i + 4)), len = dv.getUint32(i + 4, true);
+    const total = 8 + len + (len & 1);
+    const data = u8.subarray(i + 8, i + 8 + len);
+    if (keep.has(type)) {
+      const c = u8.slice(i, i + total);
+      if (type === "VP8X") c[8] &= ~0x0C;                        // desliga as marcas "tem EXIF/XMP"
+      chunks.push(c);
+    } else {
+      if (type === "EXIF") { addFound(found, "EXIF (câmera, data)"); parseExif(data[0] === 0x45 ? data.subarray(6) : data, found); }
+      else if (type === "XMP ") addFound(found, "XMP");
+      else addFound(found, "outros dados");
+      if (AI_WORDS.test(latin1(data))) addFound(found, "marcação de IA");
+    }
+    i += total;
+  }
+  const body = concat(chunks);
+  const head = new Uint8Array(12);
+  head.set(u8.subarray(0, 12));
+  new DataView(head.buffer).setUint32(4, 4 + body.length, true);
+  return { bytes: concat([head, body]), orientation: 1 };
+}
+
+function concat(parts) {
+  const n = parts.reduce((a, p) => a + p.length, 0), out = new Uint8Array(n);
+  let o = 0; for (const p of parts) { out.set(p, o); o += p.length; }
+  return out;
+}
+
+async function cleanImage(file) {
+  const u8 = new Uint8Array(await file.arrayBuffer());
+  const found = [];
+  const e = extOf(file.name);
+  let res = null, outExt = e === "jpeg" ? "jpg" : e;
+  if (e === "jpg" || e === "jpeg") res = cleanJpeg(u8, found);
+  else if (e === "png") res = cleanPng(u8, found);
+  else if (e === "webp") res = cleanWebp(u8, found);
+  if (res && res.orientation === 1) {
+    return { files: [{ name: `${baseName(file.name)}_limpo.${outExt}`, blob: new Blob([res.bytes], { type: MIME[outExt] }) }], found, note: "" };
+  }
+  // foto girada pelo celular, HEIC, GIF etc.: re-salva só os pixels (já sem nada escondido)
+  const latinAll = latin1(u8.subarray(0, Math.min(u8.length, 400000)));
+  if (/Exif\0\0/.test(latinAll)) addFound(found, "EXIF (câmera, data)");
+  if (/<x:xmpmeta/.test(latinAll)) addFound(found, "XMP");
+  if (/jumb|c2pa/.test(latinAll)) addFound(found, "C2PA (Content Credentials)");
+  if (AI_WORDS.test(latinAll)) addFound(found, "marcação de IA");
+  const fmt = e === "png" || e === "gif" || e === "bmp" ? "png" : "jpg";
+  const { blob, downscaled } = await imageTo(file, fmt, { quality: 0.95 });
+  let note = res ? "A foto foi salva de novo em alta qualidade para não perder a rotação." : "";
+  if (e === "gif") note = "GIFs animados viram uma imagem parada.";
+  if (downscaled) note += " A imagem era muito grande para o celular e foi reduzida.";
+  return { files: [{ name: `${baseName(file.name)}_limpo.${fmt}`, blob }], found, note: note.trim() };
+}
+
+/* ============================================================ Word (.docx) feito à mão */
+const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");
+const EMU_CM = 360000;
+async function buildDocx(blocks) {
+  // blocks: {text} | {pageBreak:true} | {image:{bytes, ext:"jpeg"|"png", w, h}}
+  const zip = new JSZip();
+  const rels = [];
+  let body = "", imgN = 0;
+  for (const b of blocks) {
+    if (b.pageBreak) { body += '<w:p><w:r><w:br w:type="page"/></w:r></w:p>'; continue; }
+    if (b.image) {
+      imgN++;
+      const rid = "rIdImg" + imgN, fname = `image${imgN}.${b.image.ext}`;
+      zip.file("word/media/" + fname, b.image.bytes);
+      rels.push(`<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${fname}"/>`);
+      let cx = 16 * EMU_CM, cy = Math.round(cx * b.image.h / b.image.w);
+      const maxH = 23 * EMU_CM; if (cy > maxH) { cy = maxH; cx = Math.round(cy * b.image.w / b.image.h); }
+      body += `<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${imgN}" name="Imagem ${imgN}"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${imgN}" name="${fname}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
+      continue;
+    }
+    body += `<w:p><w:r><w:t xml:space="preserve">${esc(b.text || "")}</w:t></w:r></w:p>`;
+  }
+  zip.file("[Content_Types].xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="jpeg" ContentType="image/jpeg"/><Default Extension="png" ContentType="image/png"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>');
+  zip.file("_rels/.rels", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>');
+  zip.file("word/_rels/document.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels.join("")}</Relationships>`);
+  zip.file("word/document.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><w:body>${body}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr></w:body></w:document>`);
+  return zip.generateAsync({ type: "blob", compression: "DEFLATE", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+}
+
+async function imageForDoc(file) {
+  const src = await decodeImage(file);
+  const { canvas } = drawToCanvas(src, { background: "#ffffff" });
+  const blob = await canvasBlob(canvas, "image/jpeg", 0.92);
+  return { bytes: new Uint8Array(await blob.arrayBuffer()), ext: "jpeg", w: canvas.width, h: canvas.height };
+}
+
+async function docxText(file) {
+  const zip = await JSZip.loadAsync(file).catch(() => { throw new UserError(`Não consegui abrir o Word ${file.name}.`); });
+  const xml = await zip.file("word/document.xml")?.async("string");
+  if (!xml) throw new UserError(`${file.name} não parece ser um arquivo Word (.docx).`);
+  const doc = new DOMParser().parseFromString(xml, "application/xml");
+  const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+  const out = [];
+  for (const p of doc.getElementsByTagNameNS(W, "p")) {
+    let line = "";
+    const walk = (n) => {
+      for (const c of n.childNodes) {
+        if (c.namespaceURI === W && c.localName === "t") line += c.textContent;
+        else if (c.namespaceURI === W && c.localName === "tab") line += "\t";
+        else if (c.namespaceURI === W && (c.localName === "br" || c.localName === "cr")) line += "\n";
+        else if (c.namespaceURI === W && c.localName === "p") continue;
+        else if (c.childNodes && c.childNodes.length) walk(c);
+      }
+    };
+    walk(p);
+    out.push(line);
+  }
+  return out.join("\n");
+}
+
+async function cleanDocx(file) {
+  const zip = await JSZip.loadAsync(file).catch(() => { throw new UserError(`Não consegui abrir o Word ${file.name}.`); });
+  const found = [];
+  const core = await zip.file("docProps/core.xml")?.async("string");
+  if (core) {
+    const filled = [["creator", "autor"], ["lastModifiedBy", "última modificação por"], ["title", "título"], ["subject", "assunto"], ["description", "comentários"], ["keywords", "palavras-chave"], ["category", "categoria"]]
+      .filter(([tag]) => new RegExp(`<[^>]*:?${tag}[^>]*>[^<]+<`).test(core)).map(([, pt]) => pt);
+    if (filled.length) found.push("propriedades (" + filled.join(", ") + ")");
+    if (AI_WORDS.test(core)) addFound(found, "marcação de IA");
+  }
+  const app = await zip.file("docProps/app.xml")?.async("string");
+  if (app && /<Company>[^<]+</.test(app)) addFound(found, "empresa");
+  const custom = await zip.file("docProps/custom.xml")?.async("string");
+  if (custom) { addFound(found, "propriedades personalizadas"); if (AI_WORDS.test(custom)) addFound(found, "marcação de IA"); }
+  ["docProps/core.xml", "docProps/app.xml", "docProps/custom.xml"].forEach((p) => zip.remove(p));
+  // tira as referências a esses arquivos
+  const rels = await zip.file("_rels/.rels")?.async("string");
+  if (rels) zip.file("_rels/.rels", rels.replace(/<Relationship [^>]*Target="\/?docProps\/[^"]*"[^>]*\/>/g, ""));
+  const ct = await zip.file("[Content_Types].xml")?.async("string");
+  if (ct) zip.file("[Content_Types].xml", ct.replace(/<Override [^>]*PartName="\/docProps\/[^"]*"[^>]*\/>/g, ""));
+  // metadados das fotos de dentro do documento
+  let imgs = 0;
+  for (const path of Object.keys(zip.files)) {
+    if (!/^word\/media\/.+\.(jpe?g|png|webp)$/i.test(path)) continue;
+    const u8 = new Uint8Array(await zip.file(path).async("uint8array"));
+    const f = [];
+    const e = extOf(path);
+    const r = e === "png" ? cleanPng(u8, f) : e === "webp" ? cleanWebp(u8, f) : cleanJpeg(u8, f);
+    if (r && f.length) { zip.file(path, r.bytes); imgs++; if (f.includes("marcação de IA")) addFound(found, "marcação de IA"); }
+  }
+  if (imgs) found.push(`metadados de ${imgs} foto(s) de dentro`);
+  const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+  return { files: [{ name: `${baseName(file.name)}_limpo.docx`, blob }], found };
+}
+
+/* ============================================================ PDF */
+const { PDFDocument, StandardFonts, degrees, PDFName } = window.PDFLib || {};
+async function loadPdfLib(file) {
+  if (!PDFDocument) throw new UserError("Não consegui carregar a parte de PDF. Verifique a internet e recarregue a página.");
+  try {
+    return await PDFDocument.load(await file.arrayBuffer(), { updateMetadata: false });
+  } catch (e) {
+    if (/encrypt/i.test(String(e && e.message))) throw new UserError(`${file.name} tem senha.`);
+    throw new UserError(`Não consegui abrir o PDF ${file.name}.`);
+  }
+}
+const pdfBlob = (bytes) => new Blob([bytes], { type: "application/pdf" });
+async function savePdf(doc) {
+  // sem "pdf-lib" como programa criador
+  doc.setProducer(""); doc.setCreator("");
+  return pdfBlob(await doc.save({ useObjectStreams: true }));
+}
+
+async function openPdfJs(file) {
+  if (!window.pdfjsLib) throw new UserError("Não consegui carregar a parte de PDF. Verifique a internet e recarregue a página.");
+  try {
+    return await window.pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false }).promise;
+  } catch (e) {
+    if (e && e.name === "PasswordException") throw new UserError(`${file.name} tem senha.`);
+    throw new UserError(`Não consegui abrir o PDF ${file.name}.`);
+  }
+}
+
+async function pdfLines(page) {
+  const tc = await page.getTextContent();
+  const lines = [];
+  let cur = "", lastY = null, lastH = 0;
+  for (const it of tc.items) {
+    if (!("str" in it)) continue;
+    const y = it.transform[5], h = Math.abs(it.transform[3]) || it.height || 10;
+    if (lastY !== null && Math.abs(y - lastY) > Math.max(2, h * 0.5)) {
+      lines.push({ text: cur, y: lastY, h: lastH }); cur = "";
+    }
+    cur += it.str;
+    if (it.hasEOL) { lines.push({ text: cur, y, h }); cur = ""; lastY = null; continue; }
+    lastY = y; lastH = h;
+  }
+  if (cur) lines.push({ text: cur, y: lastY ?? 0, h: lastH });
+  return lines;
+}
+
+async function pdfToText(file, progress) {
+  const pdf = await openPdfJs(file);
+  const pages = [];
+  for (let n = 1; n <= pdf.numPages; n++) {
+    progress(`Lendo página ${n} de ${pdf.numPages}…`);
+    const lines = await pdfLines(await pdf.getPage(n));
+    pages.push(lines.map((l) => l.text).join("\n"));
+  }
+  const text = pages.join("\n\n");
+  if (!text.trim()) throw new UserError("Esse PDF parece ser só imagem (escaneado): não tem texto para tirar.");
+  return text;
+}
+
+async function pdfToDocx(file, progress) {
+  const pdf = await openPdfJs(file);
+  const blocks = [];
+  let total = "";
+  for (let n = 1; n <= pdf.numPages; n++) {
+    progress(`Lendo página ${n} de ${pdf.numPages}…`);
+    const lines = await pdfLines(await pdf.getPage(n));
+    if (n > 1) blocks.push({ pageBreak: true });
+    // junta linhas próximas num parágrafo; espaço grande = parágrafo novo
+    let para = "", prev = null;
+    for (const l of lines) {
+      const t = l.text.trim();
+      if (!t) { if (para) { blocks.push({ text: para }); para = ""; } prev = null; continue; }
+      const gap = prev ? Math.abs(prev.y - l.y) : 0;
+      if (prev && gap > (prev.h || 10) * 1.8) { blocks.push({ text: para }); para = ""; }
+      para = para ? (para.endsWith("-") ? para.slice(0, -1) + t : para + " " + t) : t;
+      prev = l;
+      total += t;
+    }
+    if (para) blocks.push({ text: para });
+  }
+  if (!total.trim()) throw new UserError("Esse PDF parece ser só imagem (escaneado): não tem texto para passar para o Word.");
+  return buildDocx(blocks);
+}
+
+async function pdfToImages(file, fmt, progress) {
+  const pdf = await openPdfJs(file);
+  const out = [];
+  const canvas = document.createElement("canvas"), ctx = canvas.getContext("2d");
+  for (let n = 1; n <= pdf.numPages; n++) {
+    progress(`Desenhando página ${n} de ${pdf.numPages}…`);
+    const page = await pdf.getPage(n);
+    const base = page.getViewport({ scale: 1 });
+    let scale = Math.min(3, 1600 / base.width);
+    if (base.width * base.height * scale * scale > MAX_PIXELS) scale = Math.sqrt(MAX_PIXELS / (base.width * base.height));
+    const vp = page.getViewport({ scale });
+    canvas.width = Math.floor(vp.width); canvas.height = Math.floor(vp.height);
+    ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    const blob = await canvasBlob(canvas, MIME[fmt], fmt === "jpg" ? 0.9 : undefined);
+    const name = pdf.numPages > 1 ? `${baseName(file.name)}_pagina-${String(n).padStart(3, "0")}.${fmt}` : `${baseName(file.name)}.${fmt}`;
+    out.push({ name, blob });
+    page.cleanup();
+  }
+  return out;
+}
+
+async function cleanPdf(file) {
+  const doc = await loadPdfLib(file);
+  const found = [];
+  const fields = [["título", doc.getTitle()], ["autor", doc.getAuthor()], ["assunto", doc.getSubject()], ["palavras-chave", doc.getKeywords()], ["programa criador", doc.getCreator()], ["programa gerador", doc.getProducer()]];
+  const filled = fields.filter(([, v]) => v && String(v).trim());
+  if (filled.length) found.push("propriedades (" + filled.map(([k]) => k).join(", ") + ")");
+  if (filled.some(([, v]) => AI_WORDS.test(String(v)))) addFound(found, "marcação de IA");
+  const meta = doc.catalog.get(PDFName.of("Metadata"));
+  if (meta) {
+    addFound(found, "XMP");
+    try { const stream = doc.context.lookup(meta); const raw = stream && stream.getContents ? latin1(stream.getContents()) : ""; if (AI_WORDS.test(raw)) addFound(found, "marcação de IA"); } catch (e) { /* ignora */ }
+    doc.catalog.delete(PDFName.of("Metadata"));
+  }
+  doc.setTitle(""); doc.setAuthor(""); doc.setSubject(""); doc.setKeywords([]);
+  try { doc.context.trailerInfo.Info = undefined; } catch (e) { /* ignora */ }
+  const bytes = await doc.save({ useObjectStreams: true, updateFieldAppearances: false });
+  return { files: [{ name: `${baseName(file.name)}_limpo.pdf`, blob: pdfBlob(bytes) }], found };
+}
+
+async function imagesToPdf(files, progress) {
+  if (!PDFDocument) throw new UserError("Não consegui carregar a parte de PDF. Verifique a internet e recarregue a página.");
+  const doc = await PDFDocument.create();
+  for (let k = 0; k < files.length; k++) {
+    progress(`Imagem ${k + 1} de ${files.length}…`);
+    const src = await decodeImage(files[k]);
+    const { canvas } = drawToCanvas(src, {});
+    let img;
+    if (hasAlpha(canvas)) img = await doc.embedPng(await (await canvasBlob(canvas, "image/png")).arrayBuffer());
+    else img = await doc.embedJpg(await (await canvasBlob(canvas, "image/jpeg", 0.92)).arrayBuffer());
+    const w = 595.28, h = w * img.height / img.width; // largura de uma folha A4
+    const page = doc.addPage([w, h]);
+    page.drawImage(img, { x: 0, y: 0, width: w, height: h });
+  }
+  return savePdf(doc);
+}
+
+async function textToPdf(text) {
+  if (!PDFDocument) throw new UserError("Não consegui carregar a parte de PDF. Verifique a internet e recarregue a página.");
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const size = 11, lead = 15, M = 56, W = 595.28, H = 841.89, maxW = W - 2 * M;
+  const okChar = new Map();
+  const safe = (s) => [...s.replace(/\t/g, "    ")].map((ch) => {
+    if (!okChar.has(ch)) { try { font.encodeText(ch); okChar.set(ch, true); } catch (e) { okChar.set(ch, false); } }
+    return okChar.get(ch) ? ch : "?";
+  }).join("");
+  let page = doc.addPage([W, H]), y = H - M;
+  const newLine = () => { y -= lead; if (y < M) { page = doc.addPage([W, H]); y = H - M; } };
+  for (const raw of text.split(/\r?\n/)) {
+    const words = safe(raw).split(/( +)/);
+    let line = "";
+    for (const w of words) {
+      const test = line + w;
+      if (font.widthOfTextAtSize(test, size) > maxW && line.trim()) {
+        page.drawText(line.trimEnd(), { x: M, y, size, font }); newLine(); line = w.trimStart();
+        while (font.widthOfTextAtSize(line, size) > maxW) { // palavra maior que a linha
+          let cut = line.length; while (cut > 1 && font.widthOfTextAtSize(line.slice(0, cut), size) > maxW) cut--;
+          page.drawText(line.slice(0, cut), { x: M, y, size, font }); newLine(); line = line.slice(cut);
+        }
+      } else line = test;
+    }
+    if (line) page.drawText(line, { x: M, y, size, font });
+    newLine();
+  }
+  return savePdf(doc);
+}
+
+async function readText(file) {
+  const buf = await file.arrayBuffer();
+  let t = new TextDecoder("utf-8").decode(buf);
+  if (t.includes("\uFFFD")) { try { t = new TextDecoder("windows-1252").decode(buf); } catch (e) { /* fica utf-8 */ } }
+  return t.replace(/^﻿/, "");
+}
+const txtBlob = (s) => new Blob([s], { type: "text/plain" });
+
+/* ============================================================ botões de cada tipo */
+const each = (fn) => async (files, progress) => {
+  const out = [];
+  for (let k = 0; k < files.length; k++) {
+    if (files.length > 1) progress(`Arquivo ${k + 1} de ${files.length}…`);
+    const r = await fn(files[k], progress);
+    out.push(...(Array.isArray(r) ? r : [r]));
+  }
+  return { files: out };
+};
+const cleanAll = async (files, progress) => {
+  const out = [], found = [], notes = [];
+  for (let k = 0; k < files.length; k++) {
+    progress(files.length > 1 ? `Limpando ${k + 1} de ${files.length}…` : "Limpando…");
+    const f = files[k], kind = kindOf(f);
+    const r = kind === "image" ? await cleanImage(f) : kind === "pdf" ? await cleanPdf(f) : await cleanDocx(f);
+    out.push(...r.files); r.found.forEach((x) => addFound(found, x)); if (r.note) notes.push(r.note);
+  }
+  return { files: out, found, note: [...new Set(notes)].join(" "), clean: true };
+};
+const imgConv = (fmt, tag = "") => each(async (f) => {
+  const { blob, downscaled } = await imageTo(f, fmt);
+  return { name: `${baseName(f.name)}${tag}.${fmt}`, blob, downscaled };
+});
+const imgTool = (tag, opts, fmtFn) => each(async (f) => {
+  const fmt = fmtFn ? fmtFn(f) : sameFmt(f);
+  const src = await decodeImage(f);
+  const o = typeof opts === "function" ? opts(src) : opts;
+  const { canvas } = drawToCanvas(src, { ...o, background: fmt === "jpg" ? "#ffffff" : null });
+  if (o.gray) grayscale(canvas);
+  const blob = await canvasBlob(canvas, MIME[fmt], o.quality ?? (fmt === "png" ? undefined : 0.9));
+  return { name: `${baseName(f.name)}_${tag}.${fmt}`, blob };
+});
+function grayscale(canvas) {
+  const ctx = canvas.getContext("2d"), im = ctx.getImageData(0, 0, canvas.width, canvas.height), d = im.data;
+  for (let i = 0; i < d.length; i += 4) { const v = Math.round(d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114); d[i] = d[i + 1] = d[i + 2] = v; }
+  ctx.putImageData(im, 0, 0);
+}
+
+function actionsFor(files) {
+  const kinds = new Set(files.map(kindOf));
+  const k = kinds.size === 1 ? [...kinds][0] : "mixed";
+  const many = files.length > 1;
+  const conv = [], tools = [];
+  const clean = (what) => ({ label: "Limpar metadados", hint: `Tira ${what} escondidos no arquivo`, run: cleanAll, main: true });
+  if (k === "image") {
+    const same = sameFmt(files[0]);
+    const isPlain = ["png", "jpg", "jpeg", "webp"].includes(extOf(files[0].name));
+    [["png", "Para PNG", "Sem perda de qualidade, mantém fundo transparente"],
+     ["jpg", "Para JPG", "Arquivo menor, ideal para fotos e para enviar"],
+     ["webp", "Para WEBP", "Bem leve, ótimo para sites"]]
+      .filter(([f]) => many || !isPlain || f !== same)
+      .forEach(([f, label, hint]) => conv.push({ label, hint, run: imgConv(f) }));
+    conv.push({ label: "Para PDF", hint: many ? "Todas as fotos num PDF só, uma por página" : "A foto vira um arquivo PDF",
+      run: async (fs, p) => ({ files: [{ name: `${baseName(fs[0].name)}${many ? "_juntas" : ""}.pdf`, blob: await imagesToPdf(fs, p) }] }) });
+    conv.push({ label: "Para Word", hint: many ? "Todas as fotos num documento Word, uma por página" : "A foto dentro de um documento Word (.docx)",
+      run: async (fs, p) => {
+        const blocks = [];
+        for (let i = 0; i < fs.length; i++) { p(`Imagem ${i + 1} de ${fs.length}…`); if (i) blocks.push({ pageBreak: true }); blocks.push({ image: await imageForDoc(fs[i]) }); }
+        return { files: [{ name: `${baseName(fs[0].name)}${many ? "_juntas" : ""}.docx`, blob: await buildDocx(blocks) }] };
+      } });
+    tools.push(clean("localização, câmera, data e marcas de IA"));
+    tools.push({ label: "Comprimir", hint: "Arquivo bem menor, quase sem diferença visível", run: async (fs, p) => {
+      // PNG e WEBP viram WEBP (mantém transparência); se o navegador não souber gerar WEBP, vira JPG
+      try { return await imgTool("comprimido", { quality: 0.72 }, (f) => ["png", "webp"].includes(extOf(f.name)) ? "webp" : "jpg")(fs, p); }
+      catch (e) { if (e instanceof UserError && /WEBP/.test(e.message)) return imgTool("comprimido", { quality: 0.72 }, () => "jpg")(fs, p); throw e; }
+    } });
+    tools.push({ label: "Reduzir pela metade", hint: "Metade da largura e da altura", run: imgTool("50pct", { scale: 0.5 }) });
+    tools.push({ label: "Girar 90°", hint: "Gira no sentido horário", run: imgTool("girado", { rotate: 90 }) });
+    tools.push({ label: "Preto e branco", hint: "Tira as cores", run: imgTool("pb", { gray: true }) });
+    tools.push({ label: "Recortar quadrado", hint: "Corta o centro em quadrado (foto de perfil, post)",
+      run: imgTool("quadrado", (src) => { const s = Math.min(src.width, src.height); return { crop: { x: (src.width - s) / 2, y: (src.height - s) / 2, s } }; }) });
+  } else if (k === "pdf") {
+    conv.push({ label: "Para Word", hint: "O texto do PDF num .docx para editar (sem o layout exato)", main: true,
+      run: each(async (f, p) => ({ name: `${baseName(f.name)}.docx`, blob: await pdfToDocx(f, p) })) });
+    conv.push({ label: "Para PNG", hint: "Cada página vira uma imagem PNG", run: each((f, p) => pdfToImages(f, "png", p)) });
+    conv.push({ label: "Para JPG", hint: "Cada página vira uma imagem JPG (mais leve)", run: each((f, p) => pdfToImages(f, "jpg", p)) });
+    conv.push({ label: "Para Texto", hint: "Só o texto, num arquivo .txt", run: each(async (f, p) => ({ name: `${baseName(f.name)}.txt`, blob: txtBlob(await pdfToText(f, p)) })) });
+    tools.push(clean("autor, programa usado e marcas de IA"));
+    if (many) tools.push({ label: "Juntar PDFs", hint: "Junta todos num PDF só, na ordem da lista",
+      run: async (fs, p) => {
+        const out = await PDFDocument.create();
+        for (let i = 0; i < fs.length; i++) { p(`Juntando ${i + 1} de ${fs.length}…`); const d = await loadPdfLib(fs[i]); (await out.copyPages(d, d.getPageIndices())).forEach((pg) => out.addPage(pg)); }
+        return { files: [{ name: `${baseName(fs[0].name)}_juntos.pdf`, blob: await savePdf(out) }] };
+      } });
+    tools.push({ label: "Girar 90°", hint: "Gira todas as páginas", run: each(async (f) => {
+      const d = await loadPdfLib(f); d.getPages().forEach((pg) => pg.setRotation(degrees((pg.getRotation().angle + 90) % 360)));
+      return { name: `${baseName(f.name)}_girado.pdf`, blob: await savePdf(d) };
+    }) });
+    tools.push({ label: "Separar páginas", hint: "Cada página vira um PDF separado (vem num .zip)", run: each(async (f, p) => {
+      const d = await loadPdfLib(f), out = [];
+      for (let i = 0; i < d.getPageCount(); i++) {
+        p(`Separando página ${i + 1} de ${d.getPageCount()}…`);
+        const one = await PDFDocument.create(); const [pg] = await one.copyPages(d, [i]); one.addPage(pg);
+        out.push({ name: `${baseName(f.name)}_pagina-${String(i + 1).padStart(3, "0")}.pdf`, blob: await savePdf(one) });
+      }
+      return out;
+    }) });
+  } else if (k === "docx") {
+    conv.push({ label: "Para Texto", hint: "Só o texto, num arquivo .txt", run: each(async (f) => ({ name: `${baseName(f.name)}.txt`, blob: txtBlob(await docxText(f)) })) });
+    tools.push(clean("autor, empresa e marcas de IA"));
+  } else if (k === "text") {
+    conv.push({ label: "Para PDF", hint: "O texto numa folha A4 em PDF", run: each(async (f) => ({ name: `${baseName(f.name)}.pdf`, blob: await textToPdf(await readText(f)) })) });
+    conv.push({ label: "Para Word", hint: "O texto num documento Word (.docx)", run: each(async (f) => ({ name: `${baseName(f.name)}.docx`, blob: await buildDocx((await readText(f)).split(/\r?\n/).map((t) => ({ text: t }))) })) });
+  } else if (k === "mixed" && [...kinds].every((x) => ["image", "pdf", "docx"].includes(x))) {
+    tools.push(clean("informações pessoais e marcas de IA"));
+  }
+  return { conv, tools };
+}
+
+/* ============================================================ tela */
+let files = [], busy = false, pending = null, downloads = null;
+if (window.claude && typeof window.claude.use === "function") {
+  window.claude.use("downloads").then((d) => { downloads = d; }).catch(() => {});
+}
+
+function setFiles(list) {
+  files = list.filter((f) => f && f.size > 0);
+  pending = null;
+  $("result").hidden = true;
+  render();
+}
+
+function render() {
+  const has = files.length > 0;
+  $("chosen").hidden = !has;
+  $("actions").hidden = !has;
+  $("catalog").hidden = has;
+  $("pickBig").textContent = has ? (files.length === 1 ? files[0].name : `${files.length} arquivos`) : "Escolha fotos ou arquivos";
+  $("pickSmall").textContent = has ? "Toque para trocar os arquivos" : "Imagens, PDF, Word (.docx) e texto. Pode escolher vários.";
+  $("pickBtn").textContent = has ? "Trocar arquivos" : "Escolher arquivos";
+  $("chosenLabel").textContent = files.length === 1 ? "Escolhido" : `Escolhidos (${files.length})`;
+  const box = $("files"); box.textContent = "";
+  for (const f of files) {
+    const chip = document.createElement("span"); chip.className = "chip";
+    const n = document.createElement("span"); n.textContent = f.name;
+    const s = document.createElement("span"); s.className = "size"; s.textContent = fmtSize(f.size);
+    chip.append(n, s); box.append(chip);
+  }
+  const act = $("actions"); act.textContent = "";
+  if (!has) return;
+  const { conv, tools } = actionsFor(files);
+  const group = (title, list) => {
+    if (!list.length) return;
+    const lab = document.createElement("span"); lab.className = "label"; lab.textContent = title;
+    const grid = document.createElement("div"); grid.className = "grid";
+    for (const a of list) {
+      const b = document.createElement("button"); b.type = "button"; b.className = "act" + (a.main ? " main" : "");
+      const t = document.createElement("b"); t.textContent = a.label;
+      const h = document.createElement("small"); h.textContent = a.hint;
+      b.append(t, h); b.addEventListener("click", () => run(a)); grid.append(b);
+    }
+    act.append(lab, grid);
+  };
+  group("Converter", conv);
+  group("Ferramentas", tools);
+  if (tools.some((t) => t.label === "Limpar metadados")) { const h = $("metaHelp").cloneNode(true); h.removeAttribute("id"); act.append(h); }
+  if (!conv.length && !tools.length) {
+    const p = document.createElement("p"); p.className = "detail";
+    p.textContent = "O Converte não sabe fazer nada com esse tipo de arquivo. Funciona com imagens, PDF, Word (.docx) e texto.";
+    act.append(p);
+  }
+}
+
+function showStatus(kind, msg, detail) {
+  const r = $("result");
+  r.hidden = false; r.className = "result" + (kind ? " " + kind : "");
+  $("spin").hidden = kind !== "busy";
+  $("msg").textContent = msg;
+  $("detail").hidden = !detail; $("detail").textContent = detail || "";
+  $("saveRow").hidden = kind !== "ok";
+}
+
+async function run(action) {
+  if (busy) return;
+  busy = true;
+  document.querySelectorAll(".act").forEach((b) => (b.disabled = true));
+  pending = null;
+  showStatus("busy", `${action.label}…`);
+  try {
+    const res = await action.run(files, (t) => { $("msg").textContent = t; });
+    if (!res.files.length) throw new UserError("Nada foi criado.");
+    let out;
+    if (res.files.length === 1) out = res.files[0];
+    else {
+      $("msg").textContent = "Juntando num .zip…";
+      const zip = new JSZip(); const used = new Set();
+      for (const f of res.files) { let n = f.name, i = 2; while (used.has(n)) n = f.name.replace(/(\.[^.]+)$/, ` (${i++})$1`); used.add(n); zip.file(n, f.blob); }
+      out = { name: `Converte - ${res.files.length} arquivos.zip`, blob: await zip.generateAsync({ type: "blob", compression: "STORE" }) };
+    }
+    pending = out;
+    let detail = "";
+    if (res.clean) detail = res.found.length ? "Removido: " + res.found.join(", ") + "." : "Não havia metadados para tirar. A cópia limpa foi criada mesmo assim.";
+    if (res.note) detail += (detail ? " " : "") + res.note;
+    if (res.files.some((f) => f.downscaled)) detail += (detail ? " " : "") + "Uma imagem era grande demais para o celular e foi reduzida.";
+    showStatus("ok", `Pronto: ${out.name}`, detail);
+    $("share").hidden = !canShare(out);
+    $("saveSize").textContent = fmtSize(out.blob.size);
+  } catch (e) {
+    console.error(e);
+    const msg = e instanceof UserError ? e.message : `Algo deu errado: ${e && e.message ? e.message : e}`;
+    showStatus("bad", msg);
+  } finally {
+    busy = false;
+    document.querySelectorAll(".act").forEach((b) => (b.disabled = false));
+  }
+}
+
+$("save").addEventListener("click", async () => {
+  if (!pending) return;
+  const btn = $("save");
+  if (downloads) {
+    btn.disabled = true;
+    try {
+      await downloads.save({ filename: pending.name, data: pending.blob });
+      $("detail").hidden = false;
+      $("detail").textContent = ($("detail").textContent ? $("detail").textContent + " " : "") + "Arquivo salvo.";
+    } catch (e) {
+      const code = e && e.code;
+      if (code === "declined") return;
+      const why = code === "too_large" ? "O arquivo ficou grande demais para salvar aqui." :
+        code === "rate_limited" ? "Espere um pouco e toque em Salvar de novo." :
+        code === "rejected_extension" || code === "extension_not_enabled" ? "Esse tipo de arquivo não pode ser salvo aqui." :
+        "Não deu para salvar neste aparelho.";
+      $("detail").hidden = false; $("detail").textContent = why;
+    } finally { btn.disabled = false; }
+    return;
+  }
+  // download comum do navegador
+  const url = URL.createObjectURL(pending.blob);
+  const a = document.createElement("a"); a.href = url; a.download = pending.name;
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+});
+
+function shareFile(out) {
+  try { return new File([out.blob], out.name, { type: out.blob.type || "application/octet-stream" }); } catch (e) { return null; }
+}
+function canShare(out) {
+  const f = shareFile(out);
+  return !!(f && navigator.canShare && navigator.canShare({ files: [f] }));
+}
+$("share").addEventListener("click", async () => {
+  if (!pending) return;
+  try { await navigator.share({ files: [shareFile(pending)], title: pending.name }); }
+  catch (e) { if (e && e.name !== "AbortError") { $("detail").hidden = false; $("detail").textContent = "Não deu para compartilhar. Use Salvar arquivo."; } }
+});
+$("file").addEventListener("change", (e) => { setFiles([...e.target.files]); e.target.value = ""; });
+$("clear").addEventListener("click", () => setFiles([]));
+const pick = $("pick");
+const fileInput = $("file");
+fileInput.addEventListener("dragenter", () => pick.classList.add("drag"));
+fileInput.addEventListener("dragleave", () => pick.classList.remove("drag"));
+fileInput.addEventListener("drop", () => pick.classList.remove("drag"));
+render();
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+</script>
+</body>
+</html>
