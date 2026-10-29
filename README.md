@@ -10,10 +10,16 @@ Os arquivos são processados no próprio aparelho. Nada é enviado para servidor
 
 | Arquivo | Converter | Ferramentas |
 |---|---|---|
-| Imagem (PNG, JPG, WEBP, HEIC, GIF) | PNG, JPG, WEBP, PDF, Word (várias fotos → um arquivo só) | Limpar metadados, comprimir, reduzir, girar, preto e branco, recortar quadrado |
-| PDF | Word, PNG, JPG, texto | Limpar metadados, juntar, separar páginas, girar |
-| Word (.docx) | Texto | Limpar metadados (inclusive das fotos de dentro) |
+| Imagem (PNG, JPG, WEBP, HEIC, GIF) | Otimizar para IA, PNG, JPG, WEBP, PDF, Word (várias fotos → um arquivo só) | Limpar metadados, comprimir, reduzir, girar, preto e branco, recortar quadrado |
+| PDF | Markdown (IA), Word, PNG, JPG, texto | Limpar metadados, juntar, separar páginas, girar |
+| Word (.docx) | Markdown (IA), texto | Limpar metadados (inclusive das fotos de dentro) |
 | Texto (.txt, .md, .csv) | PDF, Word | — |
+
+### Para mandar à IA gastando menos
+
+- **Para Markdown (IA)**: PDF e Word viram `.md` com títulos, listas, negrito e tabelas, sem cabeçalho e rodapé repetidos, número de página e hífen de quebra de linha. A IA lê o mesmo conteúdo gastando bem menos tokens do que com o PDF.
+- **Otimizar para IA**: a foto fica no tamanho máximo que a IA aproveita (1568 px no lado maior), em JPG leve e sem metadados.
+- No fim aparece quantos tokens, mais ou menos, o arquivo vai gastar.
 
 ### Limpar metadados
 

@@ -205,6 +205,7 @@ button { font: inherit; color: inherit; }
     <article class="card">
       <div class="card-head"><h3>Imagem</h3><span class="exts">PNG · JPG · WEBP · HEIC · GIF</span></div>
       <ul>
+        <li><b>Otimizar para IA</b>: deixa a foto no tamanho que o Claude ou o ChatGPT aproveitam, sem gastar à toa.</li>
         <li><b>Converter</b> para PNG, JPG, WEBP, PDF ou Word. Várias fotos viram um PDF ou Word só.</li>
         <li><b>Limpar metadados</b>: tira localização (GPS), modelo do celular, data e marcas de IA.</li>
         <li><b>Comprimir</b>: arquivo bem menor, quase sem diferença visível. Bom para mandar no WhatsApp ou e-mail.</li>
@@ -214,6 +215,7 @@ button { font: inherit; color: inherit; }
     <article class="card">
       <div class="card-head"><h3>PDF</h3><span class="exts">.pdf</span></div>
       <ul>
+        <li><b>Para Markdown (IA)</b>: texto com títulos e listas num .md. Para mandar à IA gastando bem menos tokens.</li>
         <li><b>Para Word</b>: o texto do PDF num documento Word para editar.</li>
         <li><b>Para imagem</b>: cada página vira PNG ou JPG. Com várias páginas, vem tudo num .zip.</li>
         <li><b>Para texto</b>: só o texto, em .txt.</li>
@@ -224,6 +226,7 @@ button { font: inherit; color: inherit; }
     <article class="card">
       <div class="card-head"><h3>Word e texto</h3><span class="exts">.docx · .txt · .md · .csv</span></div>
       <ul>
+        <li><b>Word para Markdown (IA)</b>: títulos, listas e tabelas num .md, ideal para mandar à IA.</li>
         <li><b>Word para texto</b>: só o texto, em .txt.</li>
         <li><b>Limpar metadados do Word</b>: tira autor, empresa, propriedades e marcas de IA, inclusive das fotos de dentro.</li>
         <li><b>Texto para Word ou PDF</b>: transforma um .txt em documento.</li>
@@ -768,6 +771,213 @@ async function readText(file) {
 }
 const txtBlob = (s) => new Blob([s], { type: "text/plain" });
 
+/* ============================================================ Markdown para IA */
+// Mesma lógica da versão Windows: títulos pelo tamanho da letra, listas, negrito/itálico,
+// sem cabeçalho/rodapé repetido, sem número de página e sem hífen de quebra de linha.
+const MD_BULLET = /^\s*([•●▪◦‣∙·\-–—*■□➢➤►✓✔])\s+/;
+const MD_NUMBERED = /^\s*(\d{1,3}|[a-zA-Z])[.)]\s+/;
+const MD_PAGE_NUM = /^\s*(p[áa]g(ina)?\.?\s*)?\d{1,4}(\s*(de|of|\/)\s*\d{1,4})?\s*$/i;
+const MD_EDGE = 0.08;
+const mdText = (ln) => ln.spans.map((s) => s.text).join("");
+const mdNorm = (t) => t.trim().toLowerCase().replace(/\d+/g, "#");
+const mdAtEdge = (ln) => ln.y < ln.pageH * MD_EDGE || ln.y > ln.pageH * (1 - MD_EDGE);
+const estimateTokens = (text) => Math.max(1, Math.round(text.length / 4));
+
+function mdInline(spans) {
+  const merged = [];
+  for (const s of spans) {
+    const last = merged[merged.length - 1];
+    if (last && last.bold === s.bold && last.italic === s.italic) last.text += s.text;
+    else merged.push({ ...s });
+  }
+  return merged.map((s) => {
+    const core = s.text.trim();
+    if (!core || !(s.bold || s.italic)) return s.text;
+    const mark = s.bold && s.italic ? "***" : s.bold ? "**" : "*";
+    const lead = s.text.match(/^\s*/)[0], trail = s.text.match(/\s*$/)[0];
+    return lead + mark + core + mark + trail;
+  }).join("").replace(/[ \t]+/g, " ").trim();
+}
+function mdJoin(a, b) {
+  if (/[A-Za-zÀ-ÿ]-$/.test(a) && /^[a-zà-ÿ]/.test(b)) return a.slice(0, -1) + b;
+  return a + " " + b;
+}
+
+function mdAssemble(pages) {
+  const sizes = new Map();
+  for (const p of pages) for (const ln of p.lines) { const k = Math.round(ln.size * 10) / 10; sizes.set(k, (sizes.get(k) || 0) + mdText(ln).length); }
+  let body = 11, best = -1;
+  for (const [k, n] of sizes) if (n > best) { best = n; body = k; }
+  // cabeçalho/rodapé: texto pequeno na beirada que se repete na maioria das páginas
+  const drop = new Set();
+  if (pages.length >= 3) {
+    const seen = new Map();
+    for (const p of pages) {
+      const set = new Set(p.lines.filter((ln) => mdAtEdge(ln) && ln.size <= body * 1.1 && mdText(ln).trim()).map((ln) => mdNorm(mdText(ln))));
+      for (const t of set) seen.set(t, (seen.get(t) || 0) + 1);
+    }
+    for (const [t, n] of seen) if (n >= Math.max(2, pages.length * 0.6)) drop.add(t);
+  }
+  const blocks = [];
+  let para = "", listOpen = false;
+  const flush = () => { if (para) { blocks.push(para); para = ""; } };
+  for (const p of pages) {
+    for (const ln of p.lines) {
+      const raw = mdText(ln).trim();
+      if (!raw || (mdAtEdge(ln) && (MD_PAGE_NUM.test(raw) || drop.has(mdNorm(raw))))) continue;
+      const text = mdInline(ln.spans);
+      const ratio = body ? ln.size / body : 1;
+      const allBold = ln.spans.filter((s) => s.text.trim()).every((s) => s.bold);
+      const short = raw.length <= 90 && !/[.,;:]$/.test(raw);
+      if (ratio >= 1.15 && short) {
+        flush();
+        const level = ratio >= 1.7 ? 1 : ratio >= 1.35 ? 2 : 3;
+        blocks.push("#".repeat(level) + " " + text.replace(/\*+/g, "").trim());
+        listOpen = false; continue;
+      }
+      const mb = raw.match(MD_BULLET), mn = raw.match(MD_NUMBERED);
+      if (mb || mn) {
+        flush();
+        const item = mb ? "- " + text.replace(MD_BULLET, "").trim() : `${mn[1]}. ` + text.replace(MD_NUMBERED, "").trim();
+        if (listOpen && blocks.length) blocks[blocks.length - 1] += "\n" + item; else blocks.push(item);
+        listOpen = true; continue;
+      }
+      const newPara = ln.gap > ln.size * 0.9 || (allBold && short && raw.length <= 60);
+      if (listOpen && !newPara && blocks.length) { blocks[blocks.length - 1] = mdJoin(blocks[blocks.length - 1], text); continue; }
+      listOpen = false;
+      if (newPara) flush();
+      para = para ? mdJoin(para, text) : text;
+      if (allBold && short && raw.length <= 60) flush();
+    }
+    flush(); listOpen = false;
+  }
+  return blocks.map((b) => b.trim()).filter(Boolean).join("\n\n").replace(/\n{3,}/g, "\n\n").trim() + "\n";
+}
+
+async function pdfPagesForMd(file, progress) {
+  const pdf = await openPdfJs(file);
+  const pages = [];
+  for (let n = 1; n <= pdf.numPages; n++) {
+    progress(`Lendo página ${n} de ${pdf.numPages}…`);
+    const page = await pdf.getPage(n);
+    const vp = page.getViewport({ scale: 1 });
+    const tc = await page.getTextContent();
+    try { await page.getOperatorList(); } catch (e) { /* sem nomes de fonte: fica sem negrito */ }
+    const fontName = (id) => { try { const f = page.commonObjs.get(id); return (f && (f.name || f.loadedName)) || ""; } catch (e) { return ""; } };
+    // agrupa os pedaços de texto em linhas (mesma altura na página)
+    const rows = [];
+    for (const it of tc.items) {
+      if (!("str" in it) || !it.str) continue;
+      const size = Math.hypot(it.transform[2], it.transform[3]) || it.height || 10;
+      const top = vp.height - it.transform[5] - size;
+      const name = fontName(it.fontName);
+      const span = { text: it.str, bold: /bold|black|heavy|semibold/i.test(name), italic: /italic|oblique/i.test(name) };
+      let row = rows.find((r) => Math.abs(r.y - top) < Math.max(2, size * 0.4));
+      if (!row) { row = { y: top, size, items: [] }; rows.push(row); }
+      row.size = Math.max(row.size, size);
+      row.items.push({ x: it.transform[4], span, w: it.width || 0 });
+    }
+    rows.sort((a, b) => a.y - b.y);
+    const lines = [];
+    let lastBottom = null;
+    for (const r of rows) {
+      r.items.sort((a, b) => a.x - b.x);
+      const spans = [];
+      let endX = null;
+      for (const it of r.items) {
+        if (endX !== null && it.x - endX > r.size * 0.2 && !/\s$/.test(spans[spans.length - 1].text) && !/^\s/.test(it.span.text)) spans.push({ text: " ", bold: false, italic: false });
+        spans.push(it.span); endX = it.x + it.w;
+      }
+      const gap = lastBottom === null ? 0 : Math.max(0, r.y - lastBottom);
+      lastBottom = r.y + r.size;
+      lines.push({ spans, size: r.size, y: r.y, pageH: vp.height, gap });
+    }
+    pages.push({ lines });
+    page.cleanup();
+  }
+  return pages;
+}
+
+async function pdfToMarkdown(file, progress) {
+  const md = mdAssemble(await pdfPagesForMd(file, progress));
+  if (!md.trim()) throw new UserError("Esse PDF parece ser só imagem (escaneado): não tem texto para tirar.");
+  return md;
+}
+
+async function docxToMarkdown(file) {
+  const zip = await JSZip.loadAsync(file).catch(() => { throw new UserError(`Não consegui abrir o Word ${file.name}.`); });
+  const xml = await zip.file("word/document.xml")?.async("string");
+  if (!xml) throw new UserError(`${file.name} não parece ser um arquivo Word (.docx).`);
+  const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+  const doc = new DOMParser().parseFromString(xml, "application/xml");
+  const kid = (n, name) => [...n.childNodes].find((c) => c.namespaceURI === W && c.localName === name);
+  const kids = (n, name) => [...n.childNodes].filter((c) => c.namespaceURI === W && c.localName === name);
+  const attr = (n, name) => n && n.getAttributeNS(W, name);
+  const onOff = (rPr, name) => { const e = rPr && kid(rPr, name); if (!e) return false; const v = attr(e, "val"); return v !== "0" && v !== "false"; };
+  const runs = (p) => {
+    const out = [];
+    const walk = (n) => {
+      for (const c of n.childNodes) {
+        if (c.namespaceURI !== W) continue;
+        if (c.localName === "r") {
+          const rPr = kid(c, "rPr");
+          let t = "";
+          for (const x of c.childNodes) {
+            if (x.namespaceURI !== W) continue;
+            if (x.localName === "t") t += x.textContent; else if (x.localName === "tab") t += " "; else if (x.localName === "br") t += " ";
+          }
+          if (t) out.push({ text: t, bold: onOff(rPr, "b"), italic: onOff(rPr, "i") });
+        } else if (c.localName === "hyperlink" || c.localName === "ins" || c.localName === "smartTag") walk(c);
+      }
+    };
+    walk(p);
+    return out;
+  };
+  const cell = (s) => s.replace(/\s+/g, " ").replace(/\|/g, "\\|").trim();
+  const blocks = [];
+  for (const el of doc.getElementsByTagNameNS(W, "body")[0]?.childNodes || []) {
+    if (el.namespaceURI !== W) continue;
+    if (el.localName === "p") {
+      const pPr = kid(el, "pPr");
+      const style = (attr(pPr && kid(pPr, "pStyle"), "val") || "").toLowerCase();
+      const spans = runs(el);
+      const text = mdInline(spans);
+      if (!text) continue;
+      const h = style.match(/^(heading|ttulo|titulo)(\d)$/);
+      if (h) { blocks.push("#".repeat(Math.min(+h[2], 6)) + " " + text.replace(/\*+/g, "").trim()); continue; }
+      if (style === "title" || style === "ttulo") { blocks.push("# " + text.replace(/\*+/g, "").trim()); continue; }
+      const isList = (pPr && kid(pPr, "numPr")) || /list|lista/.test(style);
+      if (isList) {
+        const item = (/number|numera/.test(style) ? "1. " : "- ") + text.replace(MD_BULLET, "").trim();
+        const last = blocks[blocks.length - 1];
+        if (last && /^(- |1\. )/.test(last.split("\n").pop())) blocks[blocks.length - 1] += "\n" + item; else blocks.push(item);
+        continue;
+      }
+      blocks.push(text);
+    } else if (el.localName === "tbl") {
+      const rows = kids(el, "tr").map((tr) => kids(tr, "tc").map((tc) => cell(kids(tc, "p").map((p) => runs(p).map((r) => r.text).join("")).join(" "))));
+      const good = rows.filter((r) => r.some(Boolean));
+      if (!good.length) continue;
+      const n = Math.max(...good.map((r) => r.length));
+      const fix = good.map((r) => r.concat(Array(n - r.length).fill("")));
+      blocks.push(["| " + fix[0].join(" | ") + " |", "|" + "---|".repeat(n), ...fix.slice(1).map((r) => "| " + r.join(" | ") + " |")].join("\n"));
+    }
+  }
+  const md = blocks.join("\n\n").trim();
+  if (!md) throw new UserError("Esse Word não tem texto.");
+  return md + "\n";
+}
+
+const AI_MAX_SIDE = 1568; // acima disso a IA reduz a imagem: mandar maior só gasta envio
+async function imageForAi(file) {
+  const src = await decodeImage(file);
+  const k = Math.min(1, AI_MAX_SIDE / Math.max(src.width, src.height));
+  const { canvas } = drawToCanvas(src, { scale: k, background: "#ffffff" });
+  const blob = await canvasBlob(canvas, "image/jpeg", 0.85);
+  return { blob, tokens: Math.max(1, Math.round(canvas.width * canvas.height / 750)) };
+}
+const fmtInt = (n) => n.toLocaleString("pt-BR");
+
 /* ============================================================ botões de cada tipo */
 const each = (fn) => async (files, progress) => {
   const out = [];
@@ -823,6 +1033,16 @@ function actionsFor(files) {
       .forEach(([f, label, hint]) => conv.push({ label, hint, run: imgConv(f) }));
     conv.push({ label: "Para PDF", hint: many ? "Todas as fotos num PDF só, uma por página" : "A foto vira um arquivo PDF",
       run: async (fs, p) => ({ files: [{ name: `${baseName(fs[0].name)}${many ? "_juntas" : ""}.pdf`, blob: await imagesToPdf(fs, p) }] }) });
+    conv.push({ label: "Otimizar para IA", hint: "Tamanho certo para mandar ao Claude ou ChatGPT: gasta menos e não perde nada", main: true,
+      run: async (fs, p) => {
+        const out = []; let tokens = 0, before = 0, after = 0;
+        for (let i = 0; i < fs.length; i++) {
+          if (fs.length > 1) p(`Imagem ${i + 1} de ${fs.length}…`);
+          const r = await imageForAi(fs[i]); tokens += r.tokens; before += fs[i].size; after += r.blob.size;
+          out.push({ name: `${baseName(fs[i].name)}_para_ia.jpg`, blob: r.blob });
+        }
+        return { files: out, info: `Cerca de ${fmtInt(tokens)} tokens por envio. Arquivo: ${fmtSize(before)} → ${fmtSize(after)}.` };
+      } });
     conv.push({ label: "Para Word", hint: many ? "Todas as fotos num documento Word, uma por página" : "A foto dentro de um documento Word (.docx)",
       run: async (fs, p) => {
         const blocks = [];
@@ -841,7 +1061,13 @@ function actionsFor(files) {
     tools.push({ label: "Recortar quadrado", hint: "Corta o centro em quadrado (foto de perfil, post)",
       run: imgTool("quadrado", (src) => { const s = Math.min(src.width, src.height); return { crop: { x: (src.width - s) / 2, y: (src.height - s) / 2, s } }; }) });
   } else if (k === "pdf") {
-    conv.push({ label: "Para Word", hint: "O texto do PDF num .docx para editar (sem o layout exato)", main: true,
+    conv.push({ label: "Para Markdown (IA)", hint: "Texto com títulos e listas em .md. Gasta bem menos tokens para mandar à IA", main: true,
+      run: async (fs, p) => {
+        const out = []; let tokens = 0;
+        for (const f of fs) { const md = await pdfToMarkdown(f, p); tokens += estimateTokens(md); out.push({ name: `${baseName(f.name)}.md`, blob: new Blob([md], { type: "text/markdown" }) }); }
+        return { files: out, info: `Cerca de ${fmtInt(tokens)} tokens para a IA ler.` };
+      } });
+    conv.push({ label: "Para Word", hint: "O texto do PDF num .docx para editar (sem o layout exato)",
       run: each(async (f, p) => ({ name: `${baseName(f.name)}.docx`, blob: await pdfToDocx(f, p) })) });
     conv.push({ label: "Para PNG", hint: "Cada página vira uma imagem PNG", run: each((f, p) => pdfToImages(f, "png", p)) });
     conv.push({ label: "Para JPG", hint: "Cada página vira uma imagem JPG (mais leve)", run: each((f, p) => pdfToImages(f, "jpg", p)) });
@@ -867,6 +1093,12 @@ function actionsFor(files) {
       return out;
     }) });
   } else if (k === "docx") {
+    conv.push({ label: "Para Markdown (IA)", hint: "Títulos, listas e tabelas em .md. Gasta bem menos tokens para mandar à IA", main: true,
+      run: async (fs) => {
+        const out = []; let tokens = 0;
+        for (const f of fs) { const md = await docxToMarkdown(f); tokens += estimateTokens(md); out.push({ name: `${baseName(f.name)}.md`, blob: new Blob([md], { type: "text/markdown" }) }); }
+        return { files: out, info: `Cerca de ${fmtInt(tokens)} tokens para a IA ler.` };
+      } });
     conv.push({ label: "Para Texto", hint: "Só o texto, num arquivo .txt", run: each(async (f) => ({ name: `${baseName(f.name)}.txt`, blob: txtBlob(await docxText(f)) })) });
     tools.push(clean("autor, empresa e marcas de IA"));
   } else if (k === "text") {
@@ -962,6 +1194,7 @@ async function run(action) {
     let detail = "";
     if (res.clean) detail = res.found.length ? "Removido: " + res.found.join(", ") + "." : "Não havia metadados para tirar. A cópia limpa foi criada mesmo assim.";
     if (res.note) detail += (detail ? " " : "") + res.note;
+    if (res.info) detail += (detail ? " " : "") + res.info;
     if (res.files.some((f) => f.downscaled)) detail += (detail ? " " : "") + "Uma imagem era grande demais para o celular e foi reduzida.";
     showStatus("ok", `Pronto: ${out.name}`, detail);
     $("share").hidden = !canShare(out);
